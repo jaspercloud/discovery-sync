@@ -1,5 +1,6 @@
 package io.github.jaspercloud.discovery.syncer.support;
 
+import io.github.jaspercloud.discovery.syncer.util.Constants;
 import io.github.jaspercloud.discovery.syncer.util.SyncStringUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.curator.framework.CuratorFramework;
@@ -23,6 +24,11 @@ public class SpringBootZookeeperRegistry extends CacheRegistry implements Regist
     private CuratorFramework client;
     private ZookeeperDiscoveryProperties properties;
     private InstanceSerializer<ZookeeperInstance> serializer;
+
+    @Override
+    public String name() {
+        return "spring-boot-zk";
+    }
 
     public SpringBootZookeeperRegistry(CuratorFramework client, ZookeeperDiscoveryProperties properties) {
         this.client = client;
@@ -51,10 +57,14 @@ public class SpringBootZookeeperRegistry extends CacheRegistry implements Regist
         if (hasCache(instance)) {
             return;
         }
+        Map<String, String> metaData = new HashMap<>();
+        metaData.putAll(instance.getMetadata());
+        metaData.put(Constants.InstanceId, StringUtils.isNotEmpty(instance.getInstanceId()) ? instance.getInstanceId() : SyncStringUtil.genId(instance));
+        metaData.put(Constants.RegistryName, name());
         String id = StringUtils.isNotEmpty(instance.getInstanceId()) ? instance.getInstanceId() : SyncStringUtil.genId(instance);
         org.apache.curator.x.discovery.ServiceInstance<ZookeeperInstance> zookeeperInstanceServiceInstance = org.apache.curator.x.discovery.ServiceInstance.<ZookeeperInstance>builder()
                 .name(instance.getServiceName())
-                .payload(new ZookeeperInstance(id, instance.getServiceName(), this.properties.getMetadata()))
+                .payload(new ZookeeperInstance(id, instance.getServiceName(), metaData))
                 .address(instance.getAddress())
                 .port(instance.getPort())
                 .uriSpec(new UriSpec(properties.getUriSpec()))
@@ -96,8 +106,9 @@ public class SpringBootZookeeperRegistry extends CacheRegistry implements Regist
                     return;
                 }
                 client.getChildren().usingWatcher(this).forPath(path);
-                List<SyncServiceInstance> instanceList = getInstanceList(service);
-                instanceChanged.onChanged(SpringBootZookeeperRegistry.this, service, instanceList);
+                List<SyncServiceInstance> list = filterMirrorInstanceList(getInstanceList(service));
+                InstanceChangedEvent changedEvent = processInstanceChanged(service, list);
+                instanceChanged.onChanged(SpringBootZookeeperRegistry.this, changedEvent);
             }
         }).forPath(pathForName(serviceName));
     }
@@ -124,9 +135,6 @@ public class SpringBootZookeeperRegistry extends CacheRegistry implements Regist
             byte[] bytes = client.getData().forPath(path);
             org.apache.curator.x.discovery.ServiceInstance<ZookeeperInstance> instance = serializer.deserialize(bytes);
             Map<String, String> metadata = instance.getPayload().getMetadata();
-            if (null == metadata) {
-                metadata = new HashMap<>();
-            }
             SyncServiceInstance serviceInstance = new SyncServiceInstance();
             serviceInstance.setServiceName(name);
             serviceInstance.setInstanceId(instance.getId());

@@ -1,16 +1,13 @@
 package io.github.jaspercloud.discovery.syncer.support;
 
-import io.github.jaspercloud.discovery.syncer.util.SyncStringUtil;
+import io.github.jaspercloud.discovery.syncer.util.InstanceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -21,7 +18,6 @@ public class RegistrySyncWorker implements InitializingBean, DisposableBean, Reg
 
     private Registry targetRegistry;
     private List<Registry> srcRegistryList = new ArrayList<>();
-    private Map<Registry, Map<String, Map<String, SyncServiceInstance>>> syncMap = new ConcurrentHashMap<>();
 
     private ScheduledExecutorService scheduledExecutorService;
 
@@ -35,8 +31,10 @@ public class RegistrySyncWorker implements InitializingBean, DisposableBean, Reg
         for (Registry registry : srcRegistryList) {
             List<String> serviceList = registry.getServiceList();
             for (String service : serviceList) {
-                List<SyncServiceInstance> instanceList = registry.getInstanceList(service);
-                doSync(registry, service, instanceList, false);
+                List<SyncServiceInstance> oldList = targetRegistry.getInstanceList(service);
+                List<SyncServiceInstance> newList = registry.getInstanceList(service);
+                InstanceChangedEvent changedEvent = InstanceUtil.processInstanceChanged(service, oldList, newList);
+                doSync(registry, changedEvent, false);
             }
         }
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
@@ -66,37 +64,34 @@ public class RegistrySyncWorker implements InitializingBean, DisposableBean, Reg
     }
 
     @Override
-    public void onChanged(Registry registry, String serviceName, List<SyncServiceInstance> list) {
-        doSync(registry, serviceName, list, true);
+    public void onChanged(Registry registry, InstanceChangedEvent changedEvent) {
+        doSync(registry, changedEvent, true);
     }
 
-    private void doSync(Registry registry, String service, List<SyncServiceInstance> instanceList, boolean deregister) {
-        Map<String, Map<String, SyncServiceInstance>> serviceMap = syncMap.get(registry);
-        if (null == serviceMap) {
-            serviceMap = new HashMap<>();
-            syncMap.put(registry, serviceMap);
-        }
-        Map<String, SyncServiceInstance> instanceMap = serviceMap.get(service);
-        if (null == instanceMap) {
-            instanceMap = new HashMap<>();
-            serviceMap.put(service, instanceMap);
-        }
-        Map<String, SyncServiceInstance> tmp = new HashMap<>();
-        for (SyncServiceInstance instance : instanceList) {
+    private void doSync(Registry registry, InstanceChangedEvent changedEvent, boolean syncDelete) {
+        List<SyncServiceInstance> addList = changedEvent.getAddList();
+        List<SyncServiceInstance> updateList = changedEvent.getUpdateList();
+        List<SyncServiceInstance> removeList = changedEvent.getRemoveList();
+        for (SyncServiceInstance instance : addList) {
             try {
-                String id = SyncStringUtil.genId(instance);
                 targetRegistry.registerService(instance);
-                tmp.put(id, instance);
-                instanceMap.remove(id);
+                logger.info("{}->{} sync register: {}", registry.name(), targetRegistry.name(), instance);
             } catch (Exception e) {
                 logger.error(e.getMessage(), e);
             }
         }
-        serviceMap.put(service, tmp);
-        if (deregister) {
-            for (SyncServiceInstance instance : instanceMap.values()) {
+        for (SyncServiceInstance instance : updateList) {
+            try {
+//                targetRegistry.registerService(instance);
+            } catch (Exception e) {
+                logger.error(e.getMessage(), e);
+            }
+        }
+        if (syncDelete) {
+            for (SyncServiceInstance instance : removeList) {
                 try {
                     targetRegistry.deregisterService(instance);
+                    logger.info("{}->{} sync deregister: {}", registry.name(), targetRegistry.name(), instance);
                 } catch (Exception e) {
                     logger.error(e.getMessage(), e);
                 }

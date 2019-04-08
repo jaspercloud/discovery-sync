@@ -20,6 +20,9 @@ public class RegistrySyncManager implements InitializingBean, DisposableBean {
     @Override
     public void afterPropertiesSet() throws Exception {
         for (Registry registry : registryList) {
+            registry.init();
+        }
+        for (Registry registry : registryList) {
             Set<Registry> registrySet = new HashSet<>(registryList);
             registrySet.remove(registry);
             RegistrySyncWorker worker = new RegistrySyncWorker(registry, new ArrayList<>(registrySet));

@@ -4,6 +4,10 @@ import java.util.List;
 
 public interface Registry {
 
+    String name();
+
+    void init() throws Exception;
+
     void registerService(SyncServiceInstance instance) throws Exception;
 
     void deregisterService(SyncServiceInstance instance) throws Exception;
@@ -16,6 +20,6 @@ public interface Registry {
 
     interface InstanceChanged {
 
-        void onChanged(Registry registry, String serviceName, List<SyncServiceInstance> list);
+        void onChanged(Registry registry, InstanceChangedEvent changedEvent);
     }
 }

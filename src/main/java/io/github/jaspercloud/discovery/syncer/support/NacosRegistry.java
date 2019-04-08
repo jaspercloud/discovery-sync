@@ -9,6 +9,7 @@ import com.alibaba.nacos.client.naming.net.NamingProxy;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import io.github.jaspercloud.discovery.syncer.util.Constants;
 import io.github.jaspercloud.discovery.syncer.util.SyncStringUtil;
 import org.apache.commons.lang3.StringUtils;
 
@@ -18,11 +19,14 @@ import java.util.stream.Collectors;
 
 public class NacosRegistry extends CacheRegistry implements Registry {
 
-    private static final String InstanceId = "instanceId";
-
     private NamingService namingService;
     private NamingProxy namingProxy;
     private Gson gson;
+
+    @Override
+    public String name() {
+        return "nacos";
+    }
 
     public NacosRegistry(NamingService namingService, NamingProxy namingProxy) {
         this.namingService = namingService;
@@ -63,7 +67,8 @@ public class NacosRegistry extends CacheRegistry implements Registry {
         ins.setPort(instance.getPort());
         Map<String, String> metaData = new HashMap<>();
         metaData.putAll(instance.getMetadata());
-        metaData.put(InstanceId, StringUtils.isNotEmpty(instance.getInstanceId()) ? instance.getInstanceId() : SyncStringUtil.genId(instance));
+        metaData.put(Constants.InstanceId, StringUtils.isNotEmpty(instance.getInstanceId()) ? instance.getInstanceId() : SyncStringUtil.genId(instance));
+        metaData.put(Constants.RegistryName, name());
         ins.setMetadata(metaData);
         namingService.registerInstance(instance.getServiceName(), ins);
         addCache(instance);
@@ -81,25 +86,11 @@ public class NacosRegistry extends CacheRegistry implements Registry {
             @Override
             public void onEvent(Event event) {
                 NamingEvent namingEvent = (NamingEvent) event;
+                String service = namingEvent.getServiceName();
                 List<Instance> instances = namingEvent.getInstances();
-                List<SyncServiceInstance> list = instances.stream().map(new Function<Instance, SyncServiceInstance>() {
-                    @Override
-                    public SyncServiceInstance apply(Instance instance) {
-                        Map<String, String> metadata = instance.getMetadata();
-                        if (null == metadata) {
-                            metadata = new HashMap<>();
-                        }
-                        String instanceId = metadata.get(InstanceId);
-                        SyncServiceInstance serviceInstance = new SyncServiceInstance();
-                        serviceInstance.setServiceName(serviceName);
-                        serviceInstance.setInstanceId(instanceId);
-                        serviceInstance.setAddress(instance.getIp());
-                        serviceInstance.setPort(instance.getPort());
-                        serviceInstance.setMetadata(metadata);
-                        return serviceInstance;
-                    }
-                }).collect(Collectors.toList());
-                instanceChanged.onChanged(NacosRegistry.this, serviceName, list);
+                List<SyncServiceInstance> list = filterMirrorInstanceList(mapping(service, instances));
+                InstanceChangedEvent changedEvent = processInstanceChanged(service, list);
+                instanceChanged.onChanged(NacosRegistry.this, changedEvent);
             }
         });
     }
@@ -109,10 +100,7 @@ public class NacosRegistry extends CacheRegistry implements Registry {
             @Override
             public SyncServiceInstance apply(Instance instance) {
                 Map<String, String> metadata = instance.getMetadata();
-                if (null == metadata) {
-                    metadata = new HashMap<>();
-                }
-                String instanceId = metadata.get(InstanceId);
+                String instanceId = metadata.get(Constants.InstanceId);
                 SyncServiceInstance serviceInstance = new SyncServiceInstance();
                 serviceInstance.setServiceName(serviceName);
                 serviceInstance.setInstanceId(instanceId);

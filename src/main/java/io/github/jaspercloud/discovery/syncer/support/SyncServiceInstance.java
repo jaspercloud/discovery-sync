@@ -5,11 +5,16 @@ import java.util.Map;
 
 public class SyncServiceInstance {
 
+    private String registryName;
     private String serviceName;
     private String instanceId;
     private String address;
     private Integer port;
     private Map<String, String> metadata = new HashMap();
+
+    public String getRegistryName() {
+        return registryName;
+    }
 
     public String getServiceName() {
         return serviceName;
@@ -54,23 +59,31 @@ public class SyncServiceInstance {
     public SyncServiceInstance() {
     }
 
-    public SyncServiceInstance(String serviceName, String instanceId) {
-        this.serviceName = serviceName;
-        this.instanceId = instanceId;
-    }
-
-    public SyncServiceInstance(String serviceName, String instanceId, String address, Integer port) {
+    public SyncServiceInstance(String registryName, String serviceName, String instanceId, String address, Integer port) {
+        this.registryName = registryName;
         this.serviceName = serviceName;
         this.instanceId = instanceId;
         this.address = address;
         this.port = port;
     }
 
-    public SyncServiceInstance(String serviceName, String instanceId, String address, Integer port, Map<String, String> metadata) {
+    public SyncServiceInstance(String registryName, String serviceName, String instanceId, String address, Integer port, Map<String, String> metadata) {
+        this.registryName = registryName;
         this.serviceName = serviceName;
         this.instanceId = instanceId;
         this.address = address;
         this.port = port;
         this.metadata = metadata;
+    }
+
+    @Override
+    public String toString() {
+        return "SyncServiceInstance{" +
+                "registryName='" + registryName + '\'' +
+                ", serviceName='" + serviceName + '\'' +
+                ", instanceId='" + instanceId + '\'' +
+                ", address='" + address + '\'' +
+                ", port=" + port +
+                '}';
     }
 }
